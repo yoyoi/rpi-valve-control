@@ -1,0 +1,81 @@
+---
+# Raspberry Pi Electromagnetic Valve Control Playbook
+# Purpose: Control an electromagnetic valve connected to a Raspberry Pi GPIO pin
+# Save as: rpi_valve_control.yml
+
+- name: Control electromagnetic valve on Raspberry Pi
+  hosts: raspberry_pis
+  become: yes
+  vars:
+    gpio_pin: 16  # GPIO pin number where valve is connected (BCM numbering)
+    valve_state: "{{ valve_state | default('off') }}"  # Default to 'off' if not specified
+    
+  tasks:
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - python3-pip
+          - python3-dev
+        state: present
+        update_cache: yes
+      register: apt_result
+      until: apt_result is success
+      retries: 3
+      delay: 5
+
+    - name: Install RPi.GPIO Python package
+      pip:
+        name: RPi.GPIO
+        state: present
+      register: pip_result
+      until: pip_result is success
+      retries: 3
+      delay: 5
+
+    - name: Set up GPIO pin for output
+      shell: |
+        python3 -c "
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup({{ gpio_pin }}, GPIO.OUT)
+        "
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Turn valve ON
+      shell: |
+        python3 -c "
+        import RPi.GPIO as GPIO
+        import time
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup({{ gpio_pin }}, GPIO.OUT)
+        GPIO.output({{ gpio_pin }}, GPIO.HIGH)
+        "
+      args:
+        executable: /bin/bash
+      when: valve_state == "on"
+      register: valve_on_result
+      changed_when: true
+
+    - name: Turn valve OFF
+      shell: |
+        python3 -c "
+        import RPi.GPIO as GPIO
+        import time
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup({{ gpio_pin }}, GPIO.OUT)
+        GPIO.output({{ gpio_pin }}, GPIO.LOW)
+        "
+      args:
+        executable: /bin/bash
+      when: valve_state == "off"
+      register: valve_off_result
+      changed_when: true
+
+    - name: Report valve status
+      debug:
+        msg: "Electromagnetic valve on GPIO pin {{ gpio_pin }} is now {{ valve_state | upper }}"
